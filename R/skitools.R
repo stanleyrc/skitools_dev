@@ -3753,7 +3753,7 @@ brewer.master = function(n, palette = NULL, wes = FALSE,  list = FALSE)
 
       i = ((i) %% length(palettes))+1
     }
-
+    
     col = col[1:n]
     names(col) = nms
     return(col)
@@ -19402,6 +19402,8 @@ oncotable = function(tumors, gencode = 'http://mskilab.com/fishHook/hg19/gencode
 #' @param sv.stack  logical flag whether to stack bar plot simple and complex SV event counts (FALSE)
 #' @param signatures logical flag whether to show signatures (if data is provided / available) (TRUE)
 #' @param svevents logical flag whether to show events (if data is provided / available) (TRUE)
+#' @param svsimple logical flag whether to show simple events (if data is provided / available) (TRUE)
+#' @param svcomplex logical flag whether to show complex events (if data is provided / available) (TRUE)
 #' @param tmb logical flag whether to show TMB bar plot (TRUE)
 #' @param tmb.log  logical flag whether to log TMB + 1 (TRUE)
 #' @param pp logical flag whether to show purity / ploidy (if data is provided / available) (TRUE)
@@ -19426,7 +19428,14 @@ oncoprint = function(tumors = NULL,
                      sort = TRUE, sort.genes = sort, sort.tumors = sort,
                      columns = NULL,
                      noncoding = FALSE,
-                     cna = TRUE, tmb = TRUE, pp = TRUE, signature = TRUE, svevents = TRUE, basic = FALSE, 
+                     cna = TRUE,
+                     tmb = TRUE,
+                     pp = TRUE,
+                     signature = TRUE,
+                     svevents = TRUE,
+                     basic = FALSE,
+                     svsimple = TRUE,
+                     svcomplex = TRUE,
                      ppdf = TRUE,
                      return.oncotab = FALSE,
                      return.mat = FALSE,                     
@@ -19623,7 +19632,8 @@ oncoprint = function(tumors = NULL,
     regulatory  = alpha('red', 0.2),
     trunc = alpha("blue", 0.8),
     mir = alpha('purple', 0.4),
-    splice = "purple"
+    splice = "purple",
+    dummy = "gray"
   )
   
   ids = colnames(varm)
@@ -19703,45 +19713,73 @@ oncoprint = function(tumors = NULL,
 
   if (svevents & any(oncotab$track %in% c('complex sv', 'simple sv')))
   {
-    cx = dcast.data.table(oncotab[track == 'complex sv', ][, type := as.character(type)][, id := factor(id, ids)], id ~ type, fill = 0, drop = FALSE, value.var = 'value')
-    simple = dcast.data.table(oncotab[track == 'simple sv', ][, type := as.character(type)][, id := factor(id, ids)], id ~ type, fill = 0, drop = FALSE, value.var = 'value')
-    out.mat = rbind(out.mat, t(as.matrix(cx[,-1])), t(as.matrix(simple[,-1])))
+    if(svcomplex) {
+        cx = dcast.data.table(oncotab[track == 'complex sv', ][, type := as.character(type)][, id := factor(id, ids)], id ~ type, fill = 0, drop = FALSE, value.var = 'value')
+        if(ncol(cx) == 1)
+            svcomplex = FALSE
+    }
+    if(svsimple)  {
+        simple = dcast.data.table(oncotab[track == 'simple sv', ][, type := as.character(type)][, id := factor(id, ids)], id ~ type, fill = 0, drop = FALSE, value.var = 'value')
+        if(ncol(simple) == 1)
+            svsimple = FALSE
+    }
+
+    if(svcomplex & svsimple) {
+        out.mat = rbind(out.mat, t(as.matrix(cx[,-1])), t(as.matrix(simple[,-1])))
+    } else if(svcomplex) {
+        out.mat = rbind(out.mat, t(as.matrix(cx[,-1])))
+    } else if(svsimple) {
+        out.mat = rbind(out.mat, t(as.matrix(simple[,-1])))
+    }
 
     uev = names(cx)[-1]
     if (wes)
     {
-      cxcols = brewer.master(names(cx)[-1], 'IsleOfDogs1', wes = TRUE)
-      simplecols = brewer.master(names(simple)[-1], 'Zissou1', wes = TRUE)
+      if(svcomplex)
+          cxcols = brewer.master(names(cx)[-1], 'IsleOfDogs1', wes = TRUE)
+      if(svsimple)
+          simplecols = brewer.master(names(simple)[-1], 'Zissou1', wes = TRUE)
     }
     else
     {
-      cxcols = brewer.master(names(cx)[-1], 'Accent', wes = FALSE)
-      simplecols = brewer.master(names(simple)[-1], 'Pastel1', wes = FALSE)
+      if(svcomplex)
+          cxcols = brewer.master(names(cx)[-1], 'Accent', wes = FALSE)
+      if(svsimple)
+          simplecols = brewer.master(names(simple)[-1], 'Pastel1', wes = FALSE)
     }
+    if(svcomplex) {
+        cxtracks = lapply(names(cx)[-1], function(x)
+            anno_barplot(
+                cx[[x]],
+                legend = TRUE,
+                axis_param = list(gp = gpar(fontsize = track.fontsize)),
+                height = unit(track.height, 'cm'),
+                border = FALSE,
+                gp = gpar(fill = cxcols[x], col = NA)
+            ))
+        names(cxtracks) = names(cx)[-1]
+    }
+    if(svsimple) {
+        simpletracks = lapply(names(simple)[-1], function(x)
+            anno_barplot(
+                simple[[x]],
+                legend = TRUE,
+                axis_param = list(gp = gpar(fontsize = track.fontsize)),
+                height = unit(track.height, 'cm'),
+                border = FALSE,
+                gp = gpar(fill = simplecols[x], col = NA)
+            ))
+        names(simpletracks) = names(simple)[-1]
 
-    cxtracks = lapply(names(cx)[-1], function(x)
-      anno_barplot(
-        cx[[x]],
-        legend = TRUE,
-        axis_param = list(gp = gpar(fontsize = track.fontsize)),
-        height = unit(track.height, 'cm'),
-        border = FALSE,
-        gp = gpar(fill = cxcols[x], col = NA)
-      ))
-    names(cxtracks) = names(cx)[-1]
-
-    simpletracks = lapply(names(simple)[-1], function(x)
-      anno_barplot(
-        simple[[x]],
-        legend = TRUE,
-        axis_param = list(gp = gpar(fontsize = track.fontsize)),
-        height = unit(track.height, 'cm'),
-        border = FALSE,
-        gp = gpar(fill = simplecols[x], col = NA)
-        ))
-    names(simpletracks) = names(simple)[-1]
-
-    bottomtracks = c(bottomtracks, simpletracks, cxtracks)
+    }
+    if(svcomplex & svsimple) {
+        bottomtracks = c(bottomtracks, simpletracks, cxtracks)
+    } else if(svcomplex) {
+        bottomtracks = c(bottomtracks, cxtracks)
+    } else if (svsimple) {
+        bottomtracks = c(bottomtracks, simpletracks)
+    }
+    
   }
 
   ## process custom columns if any 
@@ -19833,9 +19871,9 @@ oncoprint = function(tumors = NULL,
   if (!length(bottomtracks))
     bottomtracks = NULL
 
-
   ## Marcin: messy workaround issue that alter_fun will drop names if there is only one variant type
   varm[1,1] = ifelse(nchar(varm[1,1]), paste(varm[1,1], 'dummy', sep = ','), varm[1,1])
+
   op = ComplexHeatmap::oncoPrint(varm,
                       get_type = function(x) unlist(strsplit(x, ",")), ##get type = separating each cell in matrix into vector
                       alter_fun = alter_fun,
